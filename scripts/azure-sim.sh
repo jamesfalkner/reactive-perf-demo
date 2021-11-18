@@ -34,7 +34,7 @@ export SSH_KEY=${SSH_KEY:-"$HOME/.ssh/azure"}
 
 # If you want to skip the rebuild/copy of the quarkus app, set this to a non-empty value
 # This is useful if you are doing multiple runs on the same hosts and saves time if you don't need to rebuild the app
-export SKIP_BUILD=
+export SKIP_BUILD=${SKIP_BUILD:-''}
 
 # Where to put gatling on GHOSTS hosts
 GATLING_REMOTE_HOME=/home/${SSH_USER}/gatling
@@ -57,8 +57,10 @@ QUARKUS_APP_DATASOURCE_PASSWORD=${QUARKUS_APP_DATASOURCE_PASSWORD:-"supersecretp
 
 # prepare qhost
 ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST sudo apt-get install -y zip unzip openjdk-11-jre-headless
-if [ -n "$SKIP_BUILD" ] ; then
-  mvn -f ${QUARKUS_APP_DIR} clean package -DskipTests -Dquarkus.package.type=uber-jar
+echo "skip build: $SKIP_BUILD"
+
+if [[ -z "${SKIP_BUILD}" ]] ; then
+  mvn -f ${QUARKUS_APP_DIR} clean package -DskipTests -Dquarkus.package.type=uber-jar || exit 1
   scp -i ${SSH_KEY} ${QUARKUS_APP_DIR}/target/*-runner.jar ${SSH_USER}@$QHOST:/tmp/app.jar 
 fi
 
