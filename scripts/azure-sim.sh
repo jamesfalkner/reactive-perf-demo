@@ -66,7 +66,7 @@ fi
 
 # re-run the quarkus app on QHOST
 ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST pkill java
-ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST "sh -c 'nohup java -Dquarkus.datasource.reactive.url=${QUARKUS_APP_DATASOURCE_URL} -Dquarkus.datasource.username=\"${QUARKUS_APP_DATASOURCE_USERNAME}\" -Dquarkus.datasource.password=\"${QUARKUS_APP_DATASOURCE_PASSWORD}\" -jar /tmp/app.jar > /tmp/quarkus.log 2>&1 &'"
+ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST "sh -c 'nohup java -Dquarkus.datasource.reactive.url=${QUARKUS_APP_DATASOURCE_URL} -Dquarkus.datasource.jdbc.url=${QUARKUS_APP_DATASOURCE_URL} -Dquarkus.datasource.username=\"${QUARKUS_APP_DATASOURCE_USERNAME}\" -Dquarkus.datasource.password=\"${QUARKUS_APP_DATASOURCE_PASSWORD}\" -jar /tmp/app.jar > /tmp/quarkus.log 2>&1 &'"
 
 echo "Waiting for quarkus app to start up..."
 until curl http://$QHOST:$QPORT > /dev/null 2>&1
