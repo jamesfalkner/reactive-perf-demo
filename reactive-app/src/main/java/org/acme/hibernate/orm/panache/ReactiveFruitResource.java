@@ -17,7 +17,9 @@ import org.jboss.resteasy.reactive.RestPath;
 
 import io.quarkus.hibernate.reactive.panache.Panache;
 import io.quarkus.panache.common.Sort;
+import io.smallrye.context.api.CurrentThreadContext;
 import io.smallrye.mutiny.Uni;
+import org.eclipse.microprofile.context.ThreadContext;
 
 @Path("fruits")
 @ApplicationScoped
@@ -26,6 +28,7 @@ import io.smallrye.mutiny.Uni;
 public class ReactiveFruitResource {
 
     @GET
+    @CurrentThreadContext(propagated = {}, cleared = {}, unchanged = ThreadContext.ALL_REMAINING)
     public Uni<List<Fruit>> get() {
         return Fruit.listAll(Sort.by("name"));
     }
@@ -33,11 +36,13 @@ public class ReactiveFruitResource {
 
     @GET
     @Path("{id}")
+    @CurrentThreadContext(propagated = {}, cleared = {}, unchanged = ThreadContext.ALL_REMAINING)
     public Uni<Fruit> getSingle(@RestPath Long id) {
         return Fruit.findById(id);
     }
 
     @POST
+    @CurrentThreadContext(propagated = {}, cleared = {}, unchanged = ThreadContext.ALL_REMAINING)
     public Uni<Response> create(Fruit fruit) {
         if (fruit == null || fruit.id != null) {
             throw new WebApplicationException("Id was invalidly set on request.", 422);
