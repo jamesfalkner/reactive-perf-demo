@@ -17,7 +17,6 @@
 package fruits
 
 import scala.concurrent.duration._
-import scala.util.Random
 
 import io.gatling.core.Predef._
 import io.gatling.http.Predef._
@@ -26,7 +25,7 @@ class BasicSimulation extends Simulation {
 
     var name="quarkus-rest-test"
     var users=1
-    var rampupTime=600 seconds
+    var rampupTime=60 seconds
     var repeatTimes=300
 
     def startup() = {
@@ -91,7 +90,7 @@ class Basic2000user extends BasicSimulation {
     startup()
 }
 
-class Basic5000ser extends BasicSimulation {
+class Basic5000user extends BasicSimulation {
     users=5000
     startup()
 }

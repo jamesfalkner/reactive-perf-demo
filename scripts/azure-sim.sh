@@ -36,6 +36,9 @@ export SSH_KEY=${SSH_KEY:-"$HOME/.ssh/azure"}
 # This is useful if you are doing multiple runs on the same hosts and saves time if you don't need to rebuild the app
 export SKIP_BUILD=${SKIP_BUILD:-''}
 
+# Optional name to prepend to results directory name
+export RUN_LABEL=${RUN_LABEL:-''}
+
 # Where to put gatling on GHOSTS hosts
 GATLING_REMOTE_HOME=/home/${SSH_USER}/gatling
 
@@ -56,7 +59,7 @@ QUARKUS_APP_DATASOURCE_USERNAME=${QUARKUS_APP_DATASOURCE_USERNAME:-"sa"}
 QUARKUS_APP_DATASOURCE_PASSWORD=${QUARKUS_APP_DATASOURCE_PASSWORD:-"supersecretpassword"}
 
 # prepare qhost
-ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST sudo apt-get install -y zip unzip openjdk-11-jre-headless
+ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST sudo apt-get install -y zip unzip openjdk-11-jdk-headless
 echo "skip build: $SKIP_BUILD"
 
 if [[ -z "${SKIP_BUILD}" ]] ; then
@@ -66,7 +69,7 @@ fi
 
 # re-run the quarkus app on QHOST
 ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST pkill java
-ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST "sh -c 'nohup java -Dquarkus.datasource.reactive.url=${QUARKUS_APP_DATASOURCE_URL} -Dquarkus.datasource.jdbc.url=${QUARKUS_APP_DATASOURCE_URL} -Dquarkus.datasource.username=\"${QUARKUS_APP_DATASOURCE_USERNAME}\" -Dquarkus.datasource.password=\"${QUARKUS_APP_DATASOURCE_PASSWORD}\" -jar /tmp/app.jar > /tmp/quarkus.log 2>&1 &'"
+ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST "sh -c 'nohup java -Dquarkus.datasource.reactive.url=\"${QUARKUS_APP_DATASOURCE_URL}\" -Dquarkus.datasource.jdbc.url=\"${QUARKUS_APP_DATASOURCE_URL}\" -Dquarkus.datasource.username=\"${QUARKUS_APP_DATASOURCE_USERNAME}\" -Dquarkus.datasource.password=\"${QUARKUS_APP_DATASOURCE_PASSWORD}\" -jar /tmp/app.jar > /tmp/quarkus.log 2>&1 &'"
 
 echo "Waiting for quarkus app to start up..."
 until curl http://$QHOST:$QPORT > /dev/null 2>&1
@@ -81,8 +84,10 @@ curl -X POST -H 'Content-Type:application/json' -d '{"name": "foo2"}' http://$QH
 curl -X POST -H 'Content-Type:application/json' -d '{"name": "foo3"}' http://$QHOST:$QPORT/fruits
 curl -X POST -H 'Content-Type:application/json' -d '{"name": "foo4"}' http://$QHOST:$QPORT/fruits
 
-if ! curl http://$QHOST:$QPORT/fruits > /dev/null 2>&1 ; then
-  echo "cant curl, app isnt running"
+response=$(curl --write-out '%{http_code}' --silent --output /dev/null http://$QHOST:$QPORT/fruits/1)
+
+if [ "200" -ne "$response" ] ; then
+  echo "cant curl, app isnt running or failed"
   exit 1
 fi
 
@@ -131,7 +136,11 @@ do
 done
 
 DATESTAMP=$(date '+%m-%d-%Y-%H-%M-%S')
-RESULTS_NAME=results-$(basename $QUARKUS_APP_DIR)-$DATESTAMP
+RESULTS_NAME=results-$(basename $QUARKUS_APP_DIR)-${DATESTAMP}
+if [ -n "$RUN_LABEL" ] ; then
+  RESULTS_NAME=${RUN_LABEL}-${RESULTS_NAME}
+fi
+
 mv $INTERMEDIATE_RESULTS_DIR ${SCRIPT_DIR}/../results/${RESULTS_NAME}
 echo "Aggregating simulations"
 ${GATLING_LOCAL_HOME}/bin/gatling.sh -ro ${SCRIPT_DIR}/../results/${RESULTS_NAME}
