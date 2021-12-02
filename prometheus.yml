@@ -1,0 +1,15 @@
+global:
+  scrape_interval:     5s
+  evaluation_interval: 5s
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+scrape_configs:
+  - job_name: 'quarkusreactive'
+    scrape_interval: 5s
+    metrics_path: /q/metrics
+    static_configs:
+    # change this to your quarkus host to get metrics
+    - targets: ['localhost:8080']
+     

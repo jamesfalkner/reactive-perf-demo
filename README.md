@@ -73,3 +73,15 @@ export QUARKUS_APP_DATASOURCE_PASSWORD=mysupersecretpassword
 
 The script will prepare all the hosts, run the Gatling workload, and gather all the results into an aggregated report at the end!
 
+# Metrics
+
+Each sample app has metrics enabled. If you want to easily visualize them, edit the `prometheus.yml` file in the root of this repo and change the IP address under `targets` to your Quarkus application IP address. Then you can run prometheus using Docker:
+
+```bash
+docker run -it  \
+    -p 9090:9090 \
+    -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
+    prom/prometheus
+```
+
+And access it at `localhost:9090` in your browser to issue queries. 
