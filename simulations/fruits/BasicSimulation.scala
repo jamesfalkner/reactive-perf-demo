@@ -29,9 +29,10 @@ class BasicSimulation extends Simulation {
     var repeatTimes=300
 
     def startup() = {
-       	var url="http://" + System.getenv("QHOST") + ":" + System.getenv("QPORT");
-        val httpProtocol = http.baseUrl(url)
-
+        var appcount = System.getenv("APP_COUNT").toInt
+        var urls = List.tabulate(appcount)(i => "http://" + System.getenv("QHOST") + ":" + (System.getenv("QPORT").toInt + i))
+        println("using URLs: " + urls)
+        val httpProtocol = http.baseUrls(urls)
         val sim = repeat(repeatTimes, "n") {
             exec(http("get-1")
                 .get("/fruits/1")
@@ -92,6 +93,11 @@ class Basic2000user extends BasicSimulation {
 
 class Basic5000user extends BasicSimulation {
     users=5000
+    startup()
+}
+
+class Basic20000user extends BasicSimulation {
+    users=20000
     startup()
 }
 

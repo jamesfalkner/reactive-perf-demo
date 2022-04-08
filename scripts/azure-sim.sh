@@ -36,8 +36,14 @@ export SSH_KEY=${SSH_KEY:-"$HOME/.ssh/azure"}
 # This is useful if you are doing multiple runs on the same hosts and saves time if you don't need to rebuild the app
 export SKIP_BUILD=${SKIP_BUILD:-''}
 
+# If you want to build a native image with mandrel
+export NATIVE_BUILD=${NATIVE_BUILD:-''}
+
 # Optional name to prepend to results directory name
 export RUN_LABEL=${RUN_LABEL:-''}
+
+# How many apps to run
+export APP_COUNT=${APP_COUNT:-'1'}
 
 # Where to put gatling on GHOSTS hosts
 GATLING_REMOTE_HOME=/home/${SSH_USER}/gatling
@@ -63,19 +69,35 @@ ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST sudo apt-get install -y zip unzip openjdk-1
 echo "skip build: $SKIP_BUILD"
 
 if [[ -z "${SKIP_BUILD}" ]] ; then
-  mvn -f ${QUARKUS_APP_DIR} clean package -DskipTests -Dquarkus.package.type=uber-jar || exit 1
-  scp -i ${SSH_KEY} ${QUARKUS_APP_DIR}/target/*-runner.jar ${SSH_USER}@$QHOST:/tmp/app.jar 
+  if [[ -z "${NATIVE_BUILD}" ]] ; then
+    mvn -f ${QUARKUS_APP_DIR} clean package -DskipTests -Dquarkus.package.type=uber-jar || exit 1
+    ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST pkill java
+    scp -i ${SSH_KEY} ${QUARKUS_APP_DIR}/target/*-runner.jar ${SSH_USER}@$QHOST:/tmp/quarkusapp.jar
+  else
+    mvn -f ${QUARKUS_APP_DIR} clean package -Dnative -Dquarkus.native.container-build=true -DskipTests || exit 1
+    ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST pkill quarkusapp
+    scp -i ${SSH_KEY} ${QUARKUS_APP_DIR}/target/*-runner ${SSH_USER}@$QHOST:/tmp/quarkusapp
+    ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST chmod a+x /tmp/quarkusapp
+  fi
 fi
 
 # re-run the quarkus app on QHOST
-ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST pkill java
-ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST "sh -c 'nohup java -Dquarkus.datasource.reactive.url=\"${QUARKUS_APP_DATASOURCE_URL}\" -Dquarkus.datasource.jdbc.url=\"${QUARKUS_APP_DATASOURCE_URL}\" -Dquarkus.datasource.username=\"${QUARKUS_APP_DATASOURCE_USERNAME}\" -Dquarkus.datasource.password=\"${QUARKUS_APP_DATASOURCE_PASSWORD}\" -jar /tmp/app.jar > /tmp/quarkus.log 2>&1 &'"
-
-echo "Waiting for quarkus app to start up..."
-until curl http://$QHOST:$QPORT > /dev/null 2>&1
-do
-    echo  .
-    sleep 1
+echo "APP COUNT: $APP_COUNT"
+for (( i=0; i < $APP_COUNT; i++ )) ; do
+  APP_PORT=$(expr ${QPORT} + ${i})
+  if [[ -z "${NATIVE_BUILD}" ]] ; then
+    ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST pkill java
+    ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST "sh -c 'nohup java -Dquarkus.http.port=${APP_PORT} -Dquarkus.datasource.reactive.url=\"${QUARKUS_APP_DATASOURCE_URL}\" -Dquarkus.datasource.jdbc.url=\"${QUARKUS_APP_DATASOURCE_URL}\" -Dquarkus.datasource.username=\"${QUARKUS_APP_DATASOURCE_USERNAME}\" -Dquarkus.datasource.password=\"${QUARKUS_APP_DATASOURCE_PASSWORD}\" -jar /tmp/quarkusapp.jar > /tmp/quarkus_${APP_PORT}.log 2>&1 &'"
+  else
+    ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST pkill quarkusapp
+    ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST "sh -c 'chmod a+x /tmp/quarkusapp; nohup /tmp/quarkusapp -Dquarkus.http.port=${APP_PORT} -Dquarkus.datasource.reactive.url=\"${QUARKUS_APP_DATASOURCE_URL}\" -Dquarkus.datasource.jdbc.url=\"${QUARKUS_APP_DATASOURCE_URL}\" -Dquarkus.datasource.username=\"${QUARKUS_APP_DATASOURCE_USERNAME}\" -Dquarkus.datasource.password=\"${QUARKUS_APP_DATASOURCE_PASSWORD}\"  > /tmp/quarkus_native_${APP_PORT}.log 2>&1 &'"
+  fi
+  echo "Waiting for quarkus app on ${APP_PORT} to start up..."
+  until curl http://$QHOST:$APP_PORT > /dev/null 2>&1
+  do
+      echo  .
+      sleep 1
+  done
 done
 
 echo
@@ -120,9 +142,10 @@ done
 for GHOST in "${GHOSTS[@]}"
 do
   echo "Running simulation on host: $GHOST"
-  ssh -i ${SSH_KEY} -n -f ${SSH_USER}@$GHOST "sh -c 'QHOST=$QHOST QPORT=$QPORT nohup $GATLING_REMOTE_HOME/bin/gatling.sh -nr -s $SIMULATION_NAME > /tmp/run.log 2>&1 &'"
+  ssh -i ${SSH_KEY} -n -f ${SSH_USER}@$GHOST "sh -c 'QHOST=$QHOST QPORT=$QPORT APP_COUNT=$APP_COUNT nohup $GATLING_REMOTE_HOME/bin/gatling.sh -nr -s $SIMULATION_NAME > /tmp/run.log 2>&1 &'"
 done
 
+echo "Started at `date`"
 echo "Press return when you think run is done or want to stop it manually"
 read foo
 
@@ -133,6 +156,7 @@ do
   ssh -i ${SSH_KEY} ${SSH_USER}@$GHOST pkill java
   ssh -i ${SSH_KEY} -n -f ${SSH_USER}@$GHOST "sh -c 'ls -t $GATLING_REMOTE_REPORT_DIR | head -n 1 | xargs -I {} mv ${GATLING_REMOTE_REPORT_DIR}/{} ${GATLING_REMOTE_REPORT_DIR}/report'"
   scp -i ${SSH_KEY} ${SSH_USER}@$GHOST:${GATLING_REMOTE_REPORT_DIR}/report/simulation.log ${INTERMEDIATE_RESULTS_DIR}/simulation-$GHOST.log
+  ssh -i ${SSH_KEY} ${SSH_USER}@$QHOST pkill quarkusapp
 done
 
 DATESTAMP=$(date '+%m-%d-%Y-%H-%M-%S')
@@ -143,4 +167,4 @@ fi
 
 mv $INTERMEDIATE_RESULTS_DIR ${SCRIPT_DIR}/../results/${RESULTS_NAME}
 echo "Aggregating simulations"
-${GATLING_LOCAL_HOME}/bin/gatling.sh -ro ${SCRIPT_DIR}/../results/${RESULTS_NAME}
+${GATLING_LOCAL_HOME}/bin/gatling.sh -ro ${SCRIPT_DIR}/../results/${RESULTS_NAME} -rd "$APP_COUNT Quarkus instances"
